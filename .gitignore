@@ -1,0 +1,298 @@
+# AI Model Response Evaluator - Git Ignore File
+
+# =============================================================================
+# PYTHON
+# =============================================================================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Virtual environments
+venv/
+env/
+ENV/
+.env.local
+.env.development
+.env.test
+.env.production
+ai-evaluator-env/
+
+# =============================================================================
+# ENVIRONMENT & SECRETS
+# =============================================================================
+
+# Environment variables (contains API keys!)
+.env
+
+# Local configuration overrides
+config.local.py
+local_settings.py
+
+# =============================================================================
+# DATABASE FILES
+# =============================================================================
+
+# SQLite databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Database backups
+*.db.backup
+*.sqlite.backup
+
+# =============================================================================
+# APPLICATION DATA
+# =============================================================================
+
+# Log files
+*.log
+logs/
+app.log*
+
+# Cache files
+cache/
+.cache/
+*.cache
+
+# Temporary files
+temp/
+tmp/
+*.tmp
+
+# Upload directories
+uploads/
+files/
+
+# =============================================================================
+# LEGACY/REFERENCE FILES TO IGNORE
+# =============================================================================
+
+# Old application files
+app.py
+
+# Old templates
+templates/index.html
+
+# Old databases
+query_history.db
+
+# Reference materials
+pydantic_ai_llm.txt
+pydantic_ai_providers_ollama.py
+
+# Old documentation
+NEW_APP_README.md
+TAVILY_INTEGRATION.md
+
+# Test data files
+open_ended.json
+factuality_judge_prompt.txt
+quality_judge_prompt.txt
+
+# Temporary test files
+test_fixes.py
+
+# =============================================================================
+# DEVELOPMENT TOOLS
+# =============================================================================
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-*
+.DS_Store
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Profiling data
+*.prof
+
+# =============================================================================
+# OPERATING SYSTEM
+# =============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+
+# =============================================================================
+# MODEL FILES & LARGE DATA
+# =============================================================================
+
+# Large model files (if any get saved locally)
+*.bin
+*.safetensors
+models/
+checkpoints/
+
+# Large datasets
+datasets/
+data/large/
+
+# =============================================================================
+# DEPLOYMENT & DOCKER
+# =============================================================================
+
+# Docker files
+.dockerignore
+docker-compose.override.yml
+
+# Kubernetes
+*.kubeconfig
+
+# Terraform
+*.tfstate
+*.tfvars
+.terraform/
+
+# =============================================================================
+# MONITORING & METRICS
+# =============================================================================
+
+# Prometheus metrics
+metrics/
+
+# Grafana dashboards
+dashboards/
+
+# =============================================================================
+# BACKUP FILES
+# =============================================================================
+
+# Various backup patterns
+*.backup
+*.bak
+*.orig
+*.save
+*~
+
+# =============================================================================
+# NODE.JS (if frontend build tools are added)
+# =============================================================================
+
+# Dependencies
+node_modules/
+
+# Production builds
+/build
+/dist
+
+# Environment variables
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# =============================================================================
+# DOCUMENTATION BUILD
+# =============================================================================
+
+# Sphinx documentation
+docs/_build/
+docs/build/
+
+# MkDocs
+site/
+
+# =============================================================================
+# TESTING
+# =============================================================================
+
+# Test artifacts
+.coverage.*
+.pytest_cache/
+test-results/
+coverage/
+
+# Performance tests
+benchmarks/results/
+
+# =============================================================================
+# SECURITY
+# =============================================================================
+
+# Private keys
+*.pem
+*.key
+*.crt
+*.p12
+
+# Security scan results
+security-report.*
+
+# =============================================================================
+# NOTES
+# =============================================================================
+
+# This .gitignore is comprehensive to prevent accidentally committing:
+# 1. Sensitive information (API keys, databases)
+# 2. Generated files (logs, cache, compiled code)
+# 3. Environment-specific files (OS temp files, IDE configs)
+# 4. Large files that shouldn't be in version control
+# 5. Legacy files that are kept locally for reference
