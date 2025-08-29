@@ -117,7 +117,7 @@ files/
 # app.py  # Commented out - app.py is now the main application file
 
 # Old templates
-templates/index.html
+# templates/index.html
 
 # Old databases
 query_history.db
