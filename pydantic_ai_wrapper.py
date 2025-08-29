@@ -58,13 +58,14 @@ class TavilySearchTool:
         else:
             logger.warning("⚠️ TAVILY_API_KEY not found in environment variables")
 
-    def search(self, query: str, num_results: int = 5) -> Dict[str, Any]:
+    def search(self, query: str, num_results: int = 5, include_full_content: bool = False) -> Dict[str, Any]:
         """
         Execute AI-optimized search using Tavily API.
         
         Args:
             query: Search query string
             num_results: Maximum number of search results to return (default: 5)
+            include_full_content: Whether to include full page content instead of just snippets (default: False)
             
         Returns:
             Dict containing search results in grounding format:
@@ -92,17 +93,23 @@ class TavilySearchTool:
                 search_depth="basic",  # "basic" or "advanced" 
                 max_results=num_results,
                 include_answer=False,  # We want raw sources, not AI summary
-                include_raw_content=False  # Clean content is better for LLMs
+                include_raw_content="markdown" if include_full_content else False  # Full content or clean snippets
             )
             
             sources = []
             if 'results' in result and result['results']:
                 for item in result['results'][:num_results]:
-                    sources.append({
+                    source_data = {
                         "title": item.get('title', 'Unknown'),
                         "uri": item.get('url', ''),
                         "snippet": item.get('content', '')
-                    })
+                    }
+                    
+                    # Include full content if available and requested
+                    if include_full_content and 'raw_content' in item:
+                        source_data["full_content"] = item.get('raw_content', '')
+                    
+                    sources.append(source_data)
             
             grounding_info = {
                 "has_grounding": len(sources) > 0,
@@ -201,9 +208,14 @@ class PydanticAIOllamaWrapper:
                 
                 # Add Tavily search tool
                 @agent.tool
-                async def web_search(ctx: RunContext, query: str) -> str:
-                    """Search the web for current information using Tavily AI-optimized search"""
-                    search_results = self.tavily_search.search(query)
+                async def web_search(ctx: RunContext, query: str, full_content: bool = False) -> str:
+                    """Search the web for current information using Tavily AI-optimized search
+                    
+                    Args:
+                        query: Search query string
+                        full_content: Whether to include full page content instead of just snippets
+                    """
+                    search_results = self.tavily_search.search(query, include_full_content=full_content)
                     
                     if not search_results.get("has_grounding", False):
                         return f"Search failed: {search_results.get('error', 'No results found')}"
@@ -211,11 +223,15 @@ class PydanticAIOllamaWrapper:
                     # Format search results for the model
                     formatted_results = []
                     for source in search_results["sources"][:3]:  # Limit to top 3 results
-                        formatted_results.append(
-                            f"Title: {source['title']}\n"
-                            f"URL: {source['uri']}\n"
-                            f"Content: {source['snippet']}\n"
-                        )
+                        result_text = f"Title: {source['title']}\nURL: {source['uri']}\n"
+                        
+                        # Use full content if available, otherwise use snippet
+                        if full_content and 'full_content' in source and source['full_content']:
+                            result_text += f"Full Content:\n{source['full_content']}\n"
+                        else:
+                            result_text += f"Content: {source['snippet']}\n"
+                        
+                        formatted_results.append(result_text)
                     
                     return "Search results:\n\n" + "\n---\n".join(formatted_results)
                 
