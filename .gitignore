@@ -114,7 +114,7 @@ files/
 # =============================================================================
 
 # Old application files
-app.py
+# app.py  # Commented out - app.py is now the main application file
 
 # Old templates
 templates/index.html

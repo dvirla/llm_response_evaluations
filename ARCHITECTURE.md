@@ -95,7 +95,7 @@ This document outlines the system architecture, design decisions, and technical 
 
 **Core Modules:**
 
-#### `new_app.py` - Main Application
+#### `app.py` - Main Application
 ```python
 class GeminiQuerier:
     """Unified AI model interface"""
@@ -468,7 +468,7 @@ ENABLE_CORS=              # Cross-origin requests
 ### 1. Code Organization
 
 ```
-new_app.py                 # Main Flask application
+app.py                     # Main Flask application
 ├── Database functions     # Data access layer
 ├── GeminiQuerier class   # Business logic
 └── API endpoints         # Presentation layer

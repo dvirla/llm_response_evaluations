@@ -195,7 +195,7 @@ source ai-evaluator-env/bin/activate  # Linux/Mac
 ai-evaluator-env\Scripts\activate     # Windows
 
 # Start the application
-python new_app.py
+python app.py
 
 # Application will be available at:
 # http://localhost:5001
@@ -207,7 +207,7 @@ python new_app.py
 pip install gunicorn
 
 # Run with multiple workers
-gunicorn -w 4 -b 0.0.0.0:5001 new_app:app
+gunicorn -w 4 -b 0.0.0.0:5001 app:app
 
 # With systemd service (optional)
 sudo cp deployment/ai-evaluator.service /etc/systemd/system/
@@ -285,7 +285,7 @@ ollama pull llama3.1:8b
 ### 1. Basic Functionality Test
 ```bash
 # Run application tests
-python test_new_app.py
+python -m pytest  # or your preferred test command
 python test_wrapper.py
 
 # Should see output like:
@@ -297,7 +297,7 @@ python test_wrapper.py
 ### 2. Integration Test
 ```bash
 # Start the application
-python new_app.py
+python app.py
 
 # Open browser to http://localhost:5001
 # Try a simple query:

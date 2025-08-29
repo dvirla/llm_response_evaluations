@@ -73,7 +73,7 @@ A comprehensive multi-model AI comparison platform for evaluating responses from
 
 5. **Run the application**
    ```bash
-   python new_app.py
+   python app.py
    ```
 
 6. **Access the interface**
@@ -129,7 +129,7 @@ OLLAMA_BASE_URL=http://localhost:11434/v1
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
 │   Web Interface │    │   Flask Backend  │    │   AI Providers  │
 │                 │    │                  │    │                 │
-│ • Model Select  │◄──►│ • new_app.py     │◄──►│ • Gemini 2.5    │
+│ • Model Select  │◄──►│ • app.py         │◄──►│ • Gemini 2.5    │
 │ • Dual Responses│    │ • API Endpoints  │    │ • Ollama Models │
 │ • GPU Controls  │    │ • Database       │    │ • Tavily Search │
 │ • History View  │    │ • GPU Management │    │                 │
@@ -138,7 +138,7 @@ OLLAMA_BASE_URL=http://localhost:11434/v1
 
 ### Key Components
 
-- **`new_app.py`**: Main Flask application with API endpoints
+- **`app.py`**: Main Flask application with API endpoints
 - **`pydantic_ai_wrapper.py`**: Ollama integration with GPU management
 - **`templates/new_index.html`**: Responsive web interface
 - **SQLite Database**: Stores responses, evaluations, and metadata
@@ -204,7 +204,7 @@ Which response is more accurate and comprehensive? Explain your reasoning.
 
 ### Running Tests
 ```bash
-python test_new_app.py
+python -m pytest  # or your preferred test command
 python test_wrapper.py
 ```
 
