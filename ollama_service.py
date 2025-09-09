@@ -11,6 +11,7 @@ License: MIT
 """
 
 import time
+import requests
 from typing import Dict, Any, List, Optional
 from pydantic_ai import Agent
 from pydantic_ai.models import KnownModelName
@@ -107,35 +108,53 @@ class OllamaService:
     
     def get_available_models(self) -> List[str]:
         """
-        Get list of available Ollama models.
+        Get list of available Ollama models by querying the API.
         
-        Attempts to query Ollama API for model list, falls back to
+        Attempts to query Ollama API for actual model list, falls back to
         common models if API is not accessible.
         
         Returns:
             List[str]: List of available model names
         """
         try:
-            # Try to get actual models from Ollama
-            # This would require additional HTTP client setup
-            # For now, return common models that are typically available
-            common_models = [
-                "llama3.2:3b",
-                "llama3.2:1b",
-                "llama3.1:8b",
-                "mixtral:8x7b",
-                "codellama:7b",
-                "phi3:mini",
-                "gemma2:2b",
-                "qwen2.5:7b"
-            ]
+            # Extract base URL for HTTP requests (remove /v1 suffix if present)
+            ollama_base = Config.OLLAMA_BASE_URL.replace('/v1', '').rstrip('/')
             
-            logger.info(f"📋 Available models: {len(common_models)} models")
-            return common_models
+            # Query Ollama API for available models
+            response = requests.get(f"{ollama_base}/api/tags", timeout=5)
             
+            if response.status_code == 200:
+                data = response.json()
+                models = []
+                
+                for model in data.get('models', []):
+                    model_name = model.get('name', '')
+                    if model_name:
+                        models.append(model_name)
+                
+                if models:
+                    logger.info(f"📋 Available models from Ollama API: {len(models)} models")
+                    return models
+            
+        except requests.RequestException as e:
+            logger.warning(f"⚠️ Failed to connect to Ollama API: {str(e)}")
         except Exception as e:
             logger.warning(f"⚠️ Failed to get model list: {str(e)}")
-            return ["llama3.2:3b"]  # Fallback to most common model
+        
+        # Fallback to common models
+        common_models = [
+            "llama3.2:3b",
+            "llama3.2:1b", 
+            "llama3.1:8b",
+            "mixtral:8x7b",
+            "codellama:7b",
+            "phi3:mini",
+            "gemma2:2b",
+            "qwen2.5:7b"
+        ]
+        
+        logger.info(f"📋 Using fallback models: {len(common_models)} models")
+        return common_models
     
     def _get_agent(self, model_name: str) -> Agent:
         """
@@ -279,6 +298,123 @@ class OllamaService:
                 "last_check": time.time(),
                 "error": str(e)
             }
+    
+    def get_loaded_models(self) -> List[Dict[str, Any]]:
+        """
+        Get list of currently loaded models from Ollama.
+        
+        Returns:
+            List[Dict]: List of loaded model information
+        """
+        try:
+            # Extract base URL for HTTP requests (remove /v1 suffix if present)
+            ollama_base = Config.OLLAMA_BASE_URL.replace('/v1', '').rstrip('/')
+            
+            # Query Ollama API for loaded models
+            response = requests.get(f"{ollama_base}/api/ps", timeout=5)
+            
+            if response.status_code == 200:
+                data = response.json()
+                loaded_models = []
+                
+                for model in data.get('models', []):
+                    loaded_models.append({
+                        'name': model.get('name', ''),
+                        'size': model.get('size_vram', 0),
+                        'processor': model.get('details', {}).get('quantization_level', 'Unknown'),
+                        'until': model.get('expires_at', 'Unknown')
+                    })
+                
+                logger.info(f"📋 Currently loaded models: {len(loaded_models)} models")
+                return loaded_models
+            
+        except requests.RequestException as e:
+            logger.warning(f"⚠️ Failed to get loaded models from Ollama API: {str(e)}")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to get loaded models: {str(e)}")
+        
+        return []
+    
+    def unload_model(self, model_name: str) -> bool:
+        """
+        Unload a specific model from GPU memory.
+        
+        Args:
+            model_name: Name of the model to unload
+            
+        Returns:
+            bool: True if unload was successful, False otherwise
+        """
+        try:
+            # Extract base URL for HTTP requests (remove /v1 suffix if present)
+            ollama_base = Config.OLLAMA_BASE_URL.replace('/v1', '').rstrip('/')
+            
+            # Send unload request to Ollama API
+            payload = {
+                "name": model_name,
+                "keep_alive": 0  # Immediately unload
+            }
+            
+            response = requests.post(f"{ollama_base}/api/generate", 
+                                   json=payload, 
+                                   timeout=10)
+            
+            if response.status_code == 200:
+                # Remove from our cache as well
+                if model_name in self.agents:
+                    del self.agents[model_name]
+                
+                if self.last_used_model == model_name:
+                    self.last_used_model = None
+                
+                logger.info(f"🧹 Successfully unloaded model '{model_name}'")
+                return True
+            
+        except requests.RequestException as e:
+            logger.warning(f"⚠️ Failed to unload model '{model_name}': {str(e)}")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to unload model '{model_name}': {str(e)}")
+        
+        return False
+    
+    def cleanup_gpu_memory(self) -> List[Dict[str, Any]]:
+        """
+        Clean up all loaded models from GPU memory.
+        
+        Returns:
+            List[Dict]: Results of cleanup operations
+        """
+        results = []
+        
+        try:
+            # Get currently loaded models
+            loaded_models = self.get_loaded_models()
+            
+            # Unload each model
+            for model_info in loaded_models:
+                model_name = model_info.get('name', '')
+                if model_name:
+                    success = self.unload_model(model_name)
+                    results.append({
+                        'model': model_name,
+                        'success': success,
+                        'message': 'Unloaded successfully' if success else 'Failed to unload'
+                    })
+            
+            # Also cleanup our local cache
+            self.cleanup_all_agents()
+            
+            logger.info(f"🧹 GPU cleanup completed: {len(results)} models processed")
+            
+        except Exception as e:
+            logger.error(f"❌ GPU cleanup failed: {str(e)}")
+            results.append({
+                'model': 'all',
+                'success': False,
+                'message': f'Cleanup failed: {str(e)}'
+            })
+        
+        return results
 
 
 # Export the service class

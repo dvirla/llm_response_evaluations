@@ -753,7 +753,10 @@ EXPLANATION: [A short and concise explanation of what made you deduct points for
                 const modelSelect = document.getElementById('model-select');
                 const currentValue = modelSelect.value;
                 
-                modelSelect.innerHTML = data.models.map(model => {
+                // Combine Gemini and Ollama models
+                const allModels = [...(data.gemini_models || []), ...(data.ollama_models || [])];
+                
+                modelSelect.innerHTML = allModels.map(model => {
                     const displayName = model === 'gemini-2.5-pro' ? 'Gemini 2.5 Pro' : model;
                     return `<option value="${model}" ${model === currentValue ? 'selected' : ''}>${displayName}</option>`;
                 }).join('');

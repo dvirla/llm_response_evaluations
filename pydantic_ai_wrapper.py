@@ -320,6 +320,153 @@ class PydanticAIOllamaWrapper:
                     logger.error(f"❌ {model_name} without search failed after {max_retries} attempts: {str(e)}")
                     return {"error": f"Failed after {max_retries} attempts: {str(e)}"}
     
+    async def query_ollama_with_guided_search(self, prompt: str, model_name: str, max_retries: int = 3, include_full_content: bool = False) -> Dict[str, Any]:
+        """
+        Query Ollama model with guided search flow for non-agentic models.
+        
+        This method implements a 3-step process:
+        1. Ask the LLM what it needs to search for
+        2. Execute the search queries  
+        3. Ask the LLM to answer using search results
+        
+        Args:
+            prompt: User's question/prompt
+            model_name: Name of the Ollama model to use
+            max_retries: Maximum number of retry attempts
+            include_full_content: Whether to retrieve full page content or just snippets
+            
+        Returns:
+            Dict containing thinking, response, full_response, and grounding_info
+        """
+        logger.info(f"🔍 Querying {model_name} WITH guided search flow...")
+        
+        for attempt in range(max_retries):
+            try:
+                agent = self._get_agent_without_search(model_name)
+                
+                # Step 1: Query Planning - Ask LLM what it needs to search for
+                planning_prompt = f"""You need to answer this question: "{prompt}"
+
+To provide the best answer, what specific information should I search for on the web? 
+
+Please respond in this exact format:
+SEARCH_NEEDED: [YES/NO]
+SEARCH_QUERIES: [If yes, list 1-3 specific search queries, one per line. If no, write "NONE"]
+
+Example format:
+SEARCH_NEEDED: YES  
+SEARCH_QUERIES:
+- Python asyncio best practices 2024
+- async await performance optimization
+- asyncio vs threading benchmarks
+
+Your response:"""
+
+                logger.info("📋 Step 1: Planning search queries...")
+                planning_result = await agent.run(planning_prompt)
+                
+                # Extract planning response
+                if hasattr(planning_result, 'data'):
+                    planning_response = str(planning_result.data)
+                elif hasattr(planning_result, 'output'):
+                    planning_response = str(planning_result.output)
+                else:
+                    planning_response = str(planning_result)
+                
+                # Parse the planning response
+                search_needed, search_queries = self._parse_search_planning(planning_response)
+                logger.info(f"📋 Search needed: {search_needed}, Queries: {len(search_queries)}")
+                
+                # Step 2: Search Execution (if needed)
+                search_results_text = ""
+                grounding_info = None
+                
+                if search_needed and search_queries:
+                    logger.info("🔍 Step 2: Executing search queries...")
+                    all_search_results = []
+                    
+                    for query in search_queries:
+                        query = query.strip()
+                        if query:
+                            logger.info(f"🔍 Searching for: {query}")
+                            search_result = self.tavily_search.search(
+                                query, 
+                                num_results=3, 
+                                include_full_content=include_full_content
+                            )
+                            if search_result.get("has_grounding", False):
+                                all_search_results.extend(search_result["sources"])
+                    
+                    # Format search results for the LLM
+                    if all_search_results:
+                        search_results_text = self._format_search_results_for_llm(all_search_results, include_full_content)
+                        grounding_info = {
+                            "has_grounding": True,
+                            "search_queries": search_queries,
+                            "sources": all_search_results[:5]  # Limit to top 5 sources
+                        }
+                        logger.info(f"📊 Found {len(all_search_results)} total search results")
+                    else:
+                        logger.warning("⚠️ No search results found")
+                
+                # Step 3: Final Response Generation
+                logger.info("🎯 Step 3: Generating final response...")
+                if search_results_text:
+                    final_prompt = f"""Original question: "{prompt}"
+
+I found this relevant information from web searches:
+
+{search_results_text}
+
+Based on the search results above, please provide a comprehensive answer to the original question. Think through the information step by step, then provide your final answer.
+
+Your response:"""
+                else:
+                    final_prompt = f"""Original question: "{prompt}"
+
+I wasn't able to find additional web information, so please answer based on your knowledge. Think through the question step by step, then provide your final answer.
+
+Your response:"""
+                
+                final_result = await agent.run(final_prompt)
+                
+                # Extract final response
+                if hasattr(final_result, 'data'):
+                    full_response = str(final_result.data)
+                elif hasattr(final_result, 'output'):
+                    full_response = str(final_result.output)
+                else:
+                    full_response = str(final_result)
+                
+                # Parse thinking vs response
+                thinking, final_response_text = self._parse_thinking_and_response(full_response)
+                
+                logger.info(f"✅ {model_name} guided search completed successfully")
+                result = {
+                    "thinking": thinking,
+                    "response": final_response_text,
+                    "full_response": full_response
+                }
+                
+                if grounding_info:
+                    result["grounding_info"] = grounding_info
+                
+                return result
+                
+            except Exception as e:
+                attempt_msg = f"attempt {attempt + 1}/{max_retries}"
+                logger.warning(f"⚠️ {model_name} guided search failed ({attempt_msg}): {str(e)}")
+                
+                if attempt < max_retries - 1:
+                    # Exponential backoff
+                    delay = 5 * (2 ** attempt)
+                    logger.info(f"⏳ Waiting {delay}s before retry...")
+                    import asyncio
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error(f"❌ {model_name} guided search failed after {max_retries} attempts: {str(e)}")
+                    return {"error": f"Failed after {max_retries} attempts: {str(e)}"}
+    
     async def query_ollama_with_search(self, prompt: str, model_name: str, max_retries: int = 3) -> Dict[str, Any]:
         """Query Ollama model with search tools - matches Gemini interface"""
         logger.info(f"🌐 Querying {model_name} WITH search tools...")
@@ -440,6 +587,11 @@ class PydanticAIOllamaWrapper:
         """Synchronous wrapper for query_ollama_without_search"""
         import asyncio
         return asyncio.run(self.query_ollama_without_search(prompt, model_name, max_retries))
+    
+    def query_ollama_with_guided_search_sync(self, prompt: str, model_name: str, max_retries: int = 3, include_full_content: bool = False) -> Dict[str, Any]:
+        """Synchronous wrapper for query_ollama_with_guided_search"""
+        import asyncio
+        return asyncio.run(self.query_ollama_with_guided_search(prompt, model_name, max_retries, include_full_content))
     
     def query_ollama_with_search_sync(self, prompt: str, model_name: str, max_retries: int = 3) -> Dict[str, Any]:
         """Synchronous wrapper for query_ollama_with_search"""
@@ -613,3 +765,171 @@ class PydanticAIOllamaWrapper:
         except Exception as e:
             logger.error(f"❌ Failed to get loaded models: {str(e)}")
             return {"success": False, "error": str(e)}
+    
+    def _parse_search_planning(self, planning_response: str):
+        """
+        Parse the LLM's search planning response to extract search queries.
+        
+        Args:
+            planning_response: The LLM's response to the planning prompt
+            
+        Returns:
+            Tuple of (search_needed: bool, search_queries: list)
+        """
+        search_needed = False
+        search_queries = []
+        
+        try:
+            # Look for SEARCH_NEEDED indicator
+            if "SEARCH_NEEDED:" in planning_response:
+                search_needed_line = [line for line in planning_response.split('\n') 
+                                    if 'SEARCH_NEEDED:' in line][0]
+                search_needed = 'YES' in search_needed_line.upper()
+            
+            # Look for SEARCH_QUERIES section
+            if search_needed and "SEARCH_QUERIES:" in planning_response:
+                lines = planning_response.split('\n')
+                in_queries_section = False
+                
+                for line in lines:
+                    line = line.strip()
+                    if 'SEARCH_QUERIES:' in line:
+                        in_queries_section = True
+                        continue
+                    elif in_queries_section and line:
+                        # Extract query, removing bullet points or dashes
+                        query = line.lstrip('- •*').strip()
+                        if query and query.upper() != 'NONE':
+                            search_queries.append(query)
+                        # Stop if we hit another section or empty line after queries
+                        elif not line or line.upper().startswith(('SEARCH_NEEDED', 'RESPONSE:', 'ANSWER:')):
+                            break
+            
+            # Fallback: try to extract any queries from the response
+            if search_needed and not search_queries:
+                # Look for lines that look like search queries
+                lines = planning_response.split('\n')
+                for line in lines:
+                    line = line.strip().lstrip('- •*').strip()
+                    if (line and len(line.split()) >= 2 and 
+                        not line.upper().startswith(('SEARCH_NEEDED', 'SEARCH_QUERIES', 'TO', 'I', 'THE'))):
+                        search_queries.append(line)
+                        if len(search_queries) >= 3:  # Limit to 3 queries
+                            break
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Error parsing search planning: {e}")
+            # Fallback to simple heuristics
+            if any(word in planning_response.upper() for word in ['YES', 'SEARCH', 'FIND', 'LOOK UP']):
+                search_needed = True
+                # Extract potential queries (simple heuristic)
+                words = planning_response.split()
+                if len(words) > 5:  # If there's substantial content, assume it contains queries
+                    search_queries = [planning_response[:100]]  # Use first part as query
+        
+        logger.info(f"📋 Parsed planning: search_needed={search_needed}, queries={search_queries}")
+        return search_needed, search_queries[:3]  # Limit to 3 queries
+    
+    def _format_search_results_for_llm(self, search_results: list, include_full_content: bool) -> str:
+        """
+        Format search results for LLM consumption.
+        
+        Args:
+            search_results: List of search result dictionaries
+            include_full_content: Whether to include full content or just snippets
+            
+        Returns:
+            Formatted string containing all search results
+        """
+        if not search_results:
+            return "No search results found."
+        
+        formatted_results = []
+        
+        for i, source in enumerate(search_results[:5], 1):  # Limit to top 5 results
+            result_text = f"Source {i}:\n"
+            result_text += f"Title: {source.get('title', 'Unknown')}\n"
+            result_text += f"URL: {source.get('uri', 'Unknown')}\n"
+            
+            if include_full_content and 'full_content' in source and source['full_content']:
+                # Truncate full content if too long
+                full_content = source['full_content']
+                if len(full_content) > 3000:  # Limit to prevent token overflow
+                    full_content = full_content[:3000] + "... [Content truncated]"
+                result_text += f"Content:\n{full_content}\n"
+            else:
+                result_text += f"Content: {source.get('snippet', 'No content available')}\n"
+            
+            formatted_results.append(result_text)
+        
+        return "\n" + "="*50 + "\n".join(formatted_results) + "\n" + "="*50 + "\n"
+    
+    def _parse_thinking_and_response(self, full_response: str):
+        """
+        Parse LLM response to separate thinking from final answer.
+        
+        Args:
+            full_response: The complete LLM response
+            
+        Returns:
+            Tuple of (thinking: str, final_response: str)
+        """
+        thinking = ""
+        final_response = full_response
+        
+        try:
+            # Look for common thinking patterns
+            thinking_indicators = [
+                "Let me think", "First,", "To answer this", "I need to consider",
+                "Let me analyze", "Step by step", "My reasoning", "To solve this",
+                "Based on the search results", "Looking at the information", "From the sources"
+            ]
+            
+            lines = full_response.split('\n')
+            thinking_lines = []
+            response_lines = []
+            in_thinking = False
+            
+            for line in lines:
+                stripped = line.strip()
+                
+                # Check if this line indicates start of thinking
+                if any(indicator.lower() in stripped.lower() for indicator in thinking_indicators):
+                    in_thinking = True
+                    thinking_lines.append(line)
+                # Check if this line indicates end of thinking
+                elif in_thinking and any(stripped.startswith(marker) for marker in 
+                                       ["Therefore", "In conclusion", "Final answer", "Answer:", "Response:"]):
+                    thinking_lines.append(line)
+                    in_thinking = False
+                # If in thinking mode, add to thinking
+                elif in_thinking:
+                    thinking_lines.append(line)
+                # Otherwise add to response
+                else:
+                    response_lines.append(line)
+            
+            if thinking_lines:
+                thinking = '\n'.join(thinking_lines).strip()
+                final_response = '\n'.join(response_lines).strip()
+            
+            # If we couldn't separate well, try a different approach
+            if not thinking and len(full_response) > 200:
+                # Look for paragraphs that seem like reasoning
+                paragraphs = full_response.split('\n\n')
+                if len(paragraphs) > 1:
+                    # First paragraph(s) as thinking if they contain reasoning words
+                    reasoning_words = ['because', 'since', 'therefore', 'however', 'analysis', 'consider']
+                    if any(word in paragraphs[0].lower() for word in reasoning_words):
+                        thinking = paragraphs[0]
+                        final_response = '\n\n'.join(paragraphs[1:])
+            
+            if not final_response.strip():
+                final_response = full_response
+                
+        except Exception as e:
+            logger.warning(f"⚠️ Error parsing thinking/response: {e}")
+            # Fall back to original response
+            final_response = full_response
+        
+        return thinking, final_response

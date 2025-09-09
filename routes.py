@@ -74,6 +74,7 @@ def index():
 # =============================================================================
 
 @api_bp.route('/api/query', methods=['POST'])
+@api_bp.route('/api/query-gemini', methods=['POST'])
 def query_gemini():
     """
     Generate responses using Gemini in both search modes.
@@ -114,8 +115,9 @@ def query_gemini():
             "success": True,
             "response_id": response_id,
             "model_name": model_name,
-            "without_search": result_without_search,
-            "with_search": result_with_search
+            "prompt": prompt,
+            "response_without_search": result_without_search,
+            "response_with_search": result_with_search
         }
         
         logger.info(f"✅ Query processed successfully (ID: {response_id})")
@@ -133,6 +135,7 @@ def query_gemini():
 # =============================================================================
 
 @api_bp.route('/api/evaluate', methods=['POST'])
+@api_bp.route('/api/evaluate-response', methods=['POST'])
 def evaluate_response():
     """
     Evaluate stored Gemini responses using Ollama models.
@@ -212,6 +215,7 @@ def evaluate_response():
 # =============================================================================
 
 @api_bp.route('/api/history')
+@api_bp.route('/api/gemini-history')
 def get_history():
     """
     Get AI response history with status indicators.
@@ -233,6 +237,7 @@ def get_history():
 
 
 @api_bp.route('/api/response/<int:response_id>')
+@api_bp.route('/api/gemini-response/<int:response_id>')
 def get_response_details(response_id: int):
     """
     Get detailed information about a specific response.
@@ -251,11 +256,12 @@ def get_response_details(response_id: int):
         # Get associated evaluations
         evaluations = get_evaluations_for_response(response_id)
         
-        return jsonify({
-            "success": True,
-            "response": response_data,
-            "evaluations": evaluations
-        })
+        # Flatten response data to top level for frontend compatibility
+        result = response_data.copy()
+        result["success"] = True
+        result["evaluations"] = evaluations
+        
+        return jsonify(result)
     except Exception as e:
         error_msg = f"Failed to get response details: {str(e)}"
         logger.error(f"❌ {error_msg}")
@@ -267,6 +273,7 @@ def get_response_details(response_id: int):
 # =============================================================================
 
 @api_bp.route('/api/models')
+@api_bp.route('/api/available-models')
 def get_available_models():
     """
     Get available models from both Gemini and Ollama services.
@@ -304,6 +311,38 @@ def get_available_models():
         return jsonify(result)
     except Exception as e:
         error_msg = f"Failed to get available models: {str(e)}"
+        logger.error(f"❌ {error_msg}")
+        return jsonify({"error": error_msg}), 500
+
+
+@api_bp.route('/api/ollama-models')
+def get_ollama_models():
+    """
+    Get available Ollama models specifically.
+    
+    Returns:
+        JSON with Ollama models only
+    """
+    try:
+        result = {
+            "success": True,
+            "models": [],
+            "status": "offline"
+        }
+        
+        # Get Ollama models if service is available
+        if ollama_service:
+            try:
+                result["models"] = ollama_service.get_available_models()
+                result["status"] = "online"
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to get Ollama models: {str(e)}")
+                result["status"] = "error"
+                result["error"] = str(e)
+        
+        return jsonify(result)
+    except Exception as e:
+        error_msg = f"Failed to get Ollama models: {str(e)}"
         logger.error(f"❌ {error_msg}")
         return jsonify({"error": error_msg}), 500
 
@@ -397,6 +436,102 @@ def get_system_stats():
         })
     except Exception as e:
         error_msg = f"Failed to get system stats: {str(e)}"
+        logger.error(f"❌ {error_msg}")
+        return jsonify({"error": error_msg}), 500
+
+
+# =============================================================================
+# GPU MEMORY MANAGEMENT ROUTES
+# =============================================================================
+
+@api_bp.route('/api/loaded-models')
+def get_loaded_models():
+    """
+    Get currently loaded models in GPU memory.
+    
+    Returns:
+        JSON with currently loaded models information
+    """
+    try:
+        result = {
+            "success": True,
+            "models": []
+        }
+        
+        if ollama_service:
+            loaded_models = ollama_service.get_loaded_models()
+            result["models"] = loaded_models
+        
+        return jsonify(result)
+    except Exception as e:
+        error_msg = f"Failed to get loaded models: {str(e)}"
+        logger.error(f"❌ {error_msg}")
+        return jsonify({"error": error_msg}), 500
+
+
+@api_bp.route('/api/unload-model', methods=['POST'])
+def unload_model():
+    """
+    Unload a specific model from GPU memory.
+    
+    Request JSON:
+        {
+            "model_name": "string"
+        }
+    
+    Returns:
+        JSON with unload result
+    """
+    try:
+        if not ollama_service:
+            return jsonify({"error": "Ollama service not initialized"}), 500
+            
+        data = request.get_json()
+        if not data or 'model_name' not in data:
+            return jsonify({"error": "Missing 'model_name' in request body"}), 400
+        
+        model_name = data['model_name']
+        success = ollama_service.unload_model(model_name)
+        
+        if success:
+            return jsonify({
+                "success": True,
+                "message": f"Successfully unloaded {model_name}"
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "error": f"Failed to unload {model_name}"
+            }), 500
+            
+    except Exception as e:
+        error_msg = f"Failed to unload model: {str(e)}"
+        logger.error(f"❌ {error_msg}")
+        return jsonify({"error": error_msg}), 500
+
+
+@api_bp.route('/api/gpu-cleanup', methods=['POST'])
+def gpu_cleanup():
+    """
+    Clean up all loaded models from GPU memory.
+    
+    Returns:
+        JSON with cleanup results
+    """
+    try:
+        if not ollama_service:
+            return jsonify({"error": "Ollama service not initialized"}), 500
+        
+        results = ollama_service.cleanup_gpu_memory()
+        
+        return jsonify({
+            "success": True,
+            "message": "GPU cleanup completed",
+            "results": results
+        })
+        
+    except Exception as e:
+        error_msg = f"GPU cleanup failed: {str(e)}"
         logger.error(f"❌ {error_msg}")
         return jsonify({"error": error_msg}), 500
 
